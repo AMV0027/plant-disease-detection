@@ -1,0 +1,14 @@
+Backend:
+cd backend
+pip install ultralytics fastapi pydantic shutil uvicorn
+py backend.py
+
+frontend:
+cd frontend
+npm install
+npm run dev
+
+Steps to get open-router API:
+login: https://openrouter.ai/
+go-to: https://openrouter.ai/settings/keys
+create api and paste it in .env
