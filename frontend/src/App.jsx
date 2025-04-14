@@ -1,23 +1,15 @@
 import React, { useRef, useState, useEffect } from "react";
-import {
-  Camera,
-  Upload,
-  RotateCcw,
-  Microscope,
-  Download,
-  Leaf,
-  Video,
-} from "lucide-react";
+import { Camera, Upload, RotateCcw, Microscope, Video } from "lucide-react";
 import UploadSection from "./components/UploadSection";
 import ResultsPanel from "./components/ResultsPanel";
+import { Leaf } from "lucide-react";
 
 function App() {
   const videoRef = useRef(null);
   const canvasRef = useRef(null);
-  const overlayRef = useRef(null);
   const [image, setImage] = useState(null);
   const [imageBlob, setImageBlob] = useState(null);
-  const [detections, setDetections] = useState([]);
+  const [classificationResult, setClassificationResult] = useState(null);
   const [mode, setMode] = useState("camera");
   const [analyzing, setAnalyzing] = useState(false);
   const [showResults, setShowResults] = useState(false);
@@ -60,13 +52,13 @@ function App() {
         const formData = new FormData();
         formData.append("file", blob, "frame.png");
 
-        const response = await fetch("http://localhost:8000/detect/", {
+        const response = await fetch("http://localhost:8000/predict/", {
           method: "POST",
           body: formData,
         });
 
         const data = await response.json();
-        setDetections(data.detections || []);
+        setClassificationResult(data);
         setShowResults(true);
       } catch (err) {
         console.error("Live detection error:", err);
@@ -124,13 +116,13 @@ function App() {
       const formData = new FormData();
       formData.append("file", imageBlob, "image.png");
 
-      const response = await fetch("http://localhost:8000/detect/", {
+      const response = await fetch("http://localhost:8000/predict/", {
         method: "POST",
         body: formData,
       });
 
       const data = await response.json();
-      setDetections(data.detections || []);
+      setClassificationResult(data);
       setShowResults(true);
     } catch (err) {
       console.error("Prediction error:", err);
@@ -142,72 +134,10 @@ function App() {
   const reset = () => {
     setImage(null);
     setImageBlob(null);
-    setDetections([]);
+    setClassificationResult(null);
     setShowResults(false);
     if (mode === "camera") startCamera();
   };
-
-  const downloadResults = () => {
-    // Create a downloadable report with the image and detections
-    const canvas = document.createElement("canvas");
-    const img = new Image();
-    img.src = image;
-
-    img.onload = () => {
-      canvas.width = img.width;
-      canvas.height = img.height;
-      const ctx = canvas.getContext("2d");
-
-      // Draw the image
-      ctx.drawImage(img, 0, 0);
-
-      // Draw detection boxes
-      detections.forEach((det) => {
-        const [x1, y1, x2, y2] = det.bbox;
-        ctx.strokeStyle = "#FF4B4B";
-        ctx.lineWidth = 3;
-        ctx.strokeRect(x1, y1, x2 - x1, y2 - y1);
-
-        // Draw label
-        ctx.fillStyle = "#FF4B4B";
-        ctx.font = "bold 16px Arial";
-        const text = `${det.class_name} (${(det.confidence * 100).toFixed(
-          1
-        )}%)`;
-        const textWidth = ctx.measureText(text).width;
-        ctx.fillRect(x1, y1 - 20, textWidth + 10, 20);
-        ctx.fillStyle = "white";
-        ctx.fillText(text, x1 + 5, y1 - 5);
-      });
-
-      // Convert and download
-      const link = document.createElement("a");
-      link.download = "plant-analysis-result.png";
-      link.href = canvas.toDataURL("image/png");
-      link.click();
-    };
-  };
-
-  const renderBoxes = () =>
-    detections.map((det, i) => {
-      const [x1, y1, x2, y2] = det.bbox;
-      return (
-        <div
-          key={i}
-          className="absolute border-2 border-red-600 bg-red-500/10 text-white text-xs font-semibold px-1"
-          style={{
-            left: x1 - x1 / 2,
-            top: y1 - y1 / 2,
-            width: x2 - x1,
-            height: y2 - y1,
-          }}
-        >
-          <span className="bg-red-600 px-1 py-0.5 rounded">
-            {det.class_name} ({(det.confidence * 100).toFixed(1)}%)
-          </span>
-        </div>
-      );
-    });
 
   return (
     <div className="w-full min-h-screen bg-gradient-to-br from-emerald-50 to-teal-100 flex flex-col items-center justify-start pb-24">
@@ -292,14 +222,37 @@ function App() {
                 />
               )}
 
-              {/* ✅ Render overlay unconditionally if detections are available */}
-              {(mode === "live" || image) && detections.length > 0 && (
-                <div ref={overlayRef} className="absolute inset-0 z-20">
-                  {renderBoxes()}
+              <canvas ref={canvasRef} style={{ display: "none" }} />
+            </div>
+
+            <div>
+              {classificationResult && mode === "live" && (
+                <div className="flex justify-between w-full text-white bg-emerald-700 p-3 rounded-xl mt-3">
+                  <p className="text-xl">
+                    {classificationResult.predicted_class
+                      .replace("___", " - ")
+                      .replace("__", " ")
+                      .replace("_", " ")}
+                  </p>
+                  <div className="flex items-center gap-2">
+                    <div
+                      className={`w-3 h-3 rounded-full
+                    ${
+                      classificationResult.confidence > 0.9
+                        ? " bg-green-300"
+                        : classificationResult.confidence > 0.7
+                        ? "bg-orange-400"
+                        : classificationResult.confidence > 0.5
+                        ? "bg-yellow-300"
+                        : "text-red-500"
+                    } `}
+                    ></div>
+                    <p className="text-xl">
+                      {Math.floor(classificationResult.confidence * 100)}%
+                    </p>
+                  </div>
                 </div>
               )}
-
-              <canvas ref={canvasRef} style={{ display: "none" }} />
             </div>
 
             {/* Action Buttons */}
@@ -342,15 +295,6 @@ function App() {
                   >
                     <RotateCcw className="w-5 h-5 mr-2" /> Reset
                   </button>
-
-                  {detections.length > 0 && (
-                    <button
-                      onClick={downloadResults}
-                      className="px-6 py-3 rounded-full bg-emerald-600 text-white hover:bg-emerald-700 transition-all shadow-md flex items-center"
-                    >
-                      <Download className="w-5 h-5 mr-2" /> Download
-                    </button>
-                  )}
                 </>
               )}
             </div>
@@ -359,7 +303,7 @@ function App() {
           {/* Results Panel */}
           {image && showResults && (
             <div className="w-full lg:w-2/5">
-              <ResultsPanel detections={detections} />
+              <ResultsPanel classificationResult={classificationResult} />
             </div>
           )}
         </div>

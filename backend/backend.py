@@ -2,6 +2,7 @@ from fastapi import FastAPI, File, UploadFile
 from fastapi.responses import JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
 from ultralytics import YOLO
+from pydantic import BaseModel
 import shutil
 import uuid
 import os
@@ -11,46 +12,56 @@ app = FastAPI()
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=["*"],  # or ["http://localhost:3000"] for more control
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
-# Load YOLO object detection model
+class PredictionResult(BaseModel):
+    predicted_class: str
+    class_id: int
+    confidence: float
+
+# Load model only once
 model = YOLO(r'C:\Customer Projects\plant_disease_detection\Final project\backend\best.pt')
 
 @app.get("/health")
 async def health_check():
-    return {"status": "online", "message": "Object Detection API running", "model_loaded": bool(model)}
+    return {"status": "online", "message": "Server is running", "model_loaded": bool(model)}
 
-@app.post("/detect/")
-async def detect_objects(file: UploadFile = File(...)):
+
+@app.post("/predict/", response_model=PredictionResult)
+async def predict_image(file: UploadFile = File(...)):
+    # Save uploaded file to a temporary location
     temp_filename = f"temp_{uuid.uuid4().hex}.jpg"
     with open(temp_filename, "wb") as buffer:
         shutil.copyfileobj(file.file, buffer)
 
-    # Run detection
+    # Run prediction
     results = model.predict(temp_filename)
 
-    detections = []
-    boxes = results[0].boxes
-    for i in range(len(boxes)):
-        xyxy = boxes.xyxy[i].tolist()  # [x1, y1, x2, y2]
-        conf = boxes.conf[i].item()
-        class_id = int(boxes.cls[i].item())
-        class_name = model.names[class_id]
+    # Extract prediction
+    probs = results[0].probs
+    class_id = probs.top1
+    confidence = probs.top1conf.item()
+    class_name = model.names[class_id]
 
-        detections.append({
-            "class_name": class_name,
-            "class_id": class_id,
-            "confidence": round(conf, 4),
-            "bbox": [round(x, 2) for x in xyxy]  # rounded for readability
-        })
-
+    # Clean up
     os.remove(temp_filename)
 
-    return JSONResponse({"detections": detections})
+    print(f"""
+    Name: {class_name}
+    id: {class_id}
+    confidence: {round(confidence, 4)}
+    """)
+
+    # Return as JSON
+    return JSONResponse({
+        "predicted_class": class_name,
+        "class_id": class_id,
+        "confidence": round(confidence, 4)
+    })
 
 if __name__ == "__main__":
     uvicorn.run("backend:app", host="127.0.0.1", port=8000, reload=True)
