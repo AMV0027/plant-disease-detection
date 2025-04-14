@@ -1,0 +1,3 @@
+number of images = 112000 images
+
+ClassNames: 66 in total

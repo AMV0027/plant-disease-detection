@@ -18,7 +18,7 @@ app.add_middleware(
 )
 
 # Load YOLO object detection model
-model = YOLO(r'C:\Customer Projects\plant_disease_detection\Final project\backend\plant_fruit_disease.pt')
+model = YOLO(r'C:\Customer Projects\plant_disease_detection\Final project\backend\best.pt')
 
 @app.get("/health")
 async def health_check():
