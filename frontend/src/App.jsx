@@ -1,10 +1,15 @@
-import React, { useRef, useState, useEffect } from 'react';
+import React, { useRef, useState, useEffect } from "react";
 import {
-  Camera, Upload, RotateCcw, Microscope,
-  ChevronDown, Share, Download, Leaf, AlertTriangle
-} from 'lucide-react';
-import UploadSection from './components/UploadSection';
-import ResultsPanel from './components/ResultsPanel';
+  Camera,
+  Upload,
+  RotateCcw,
+  Microscope,
+  Download,
+  Leaf,
+  Video,
+} from "lucide-react";
+import UploadSection from "./components/UploadSection";
+import ResultsPanel from "./components/ResultsPanel";
 
 function App() {
   const videoRef = useRef(null);
@@ -13,24 +18,65 @@ function App() {
   const [image, setImage] = useState(null);
   const [imageBlob, setImageBlob] = useState(null);
   const [detections, setDetections] = useState([]);
-  const [mode, setMode] = useState('camera');
+  const [mode, setMode] = useState("camera");
   const [analyzing, setAnalyzing] = useState(false);
   const [showResults, setShowResults] = useState(false);
 
   useEffect(() => {
-    if (mode === 'camera' && !image) startCamera();
+    let interval;
 
-    // Clean up camera stream on unmount
+    if ((mode === "camera" || mode === "live") && !image) {
+      startCamera();
+    }
+
+    if (mode === "live" && videoRef.current) {
+      interval = setInterval(() => {
+        captureAndAnalyzeFrame();
+      }, 1000); // 1 frame per second
+    }
+
     return () => {
       if (videoRef.current?.srcObject) {
         const stream = videoRef.current.srcObject;
-        stream.getTracks().forEach(track => track.stop());
+        stream.getTracks().forEach((track) => track.stop());
       }
+      clearInterval(interval);
     };
   }, [mode]);
 
+  const captureAndAnalyzeFrame = async () => {
+    const video = videoRef.current;
+    const canvas = canvasRef.current;
+    if (!video || !canvas) return;
+
+    const context = canvas.getContext("2d");
+    canvas.width = video.videoWidth;
+    canvas.height = video.videoHeight;
+    context.drawImage(video, 0, 0, canvas.width, canvas.height);
+
+    canvas.toBlob(async (blob) => {
+      if (!blob) return;
+      try {
+        const formData = new FormData();
+        formData.append("file", blob, "frame.png");
+
+        const response = await fetch("http://localhost:8000/detect/", {
+          method: "POST",
+          body: formData,
+        });
+
+        const data = await response.json();
+        setDetections(data.detections || []);
+        setShowResults(true);
+      } catch (err) {
+        console.error("Live detection error:", err);
+      }
+    }, "image/png");
+  };
+
   const startCamera = () => {
-    navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' } })
+    navigator.mediaDevices
+      .getUserMedia({ video: { facingMode: "environment" } })
       .then((stream) => {
         if (videoRef.current) {
           videoRef.current.srcObject = stream;
@@ -40,7 +86,7 @@ function App() {
       .catch((err) => {
         console.error("Camera access denied:", err);
         // Fallback to upload mode if camera is not available
-        setMode('upload');
+        setMode("upload");
       });
   };
 
@@ -49,17 +95,17 @@ function App() {
     const canvas = canvasRef.current;
     if (!video || !canvas) return;
 
-    const context = canvas.getContext('2d');
+    const context = canvas.getContext("2d");
     canvas.width = video.videoWidth;
     canvas.height = video.videoHeight;
     context.drawImage(video, 0, 0, canvas.width, canvas.height);
-    const imageDataURL = canvas.toDataURL('image/png');
+    const imageDataURL = canvas.toDataURL("image/png");
     setImage(imageDataURL);
 
     const stream = video.srcObject;
-    if (stream) stream.getTracks().forEach(track => track.stop());
+    if (stream) stream.getTracks().forEach((track) => track.stop());
 
-    canvas.toBlob(blob => setImageBlob(blob), 'image/png');
+    canvas.toBlob((blob) => setImageBlob(blob), "image/png");
   };
 
   const handleUploadResult = (previewImage, fileBlob) => {
@@ -80,7 +126,7 @@ function App() {
 
       const response = await fetch("http://localhost:8000/detect/", {
         method: "POST",
-        body: formData
+        body: formData,
       });
 
       const data = await response.json();
@@ -98,44 +144,46 @@ function App() {
     setImageBlob(null);
     setDetections([]);
     setShowResults(false);
-    if (mode === 'camera') startCamera();
+    if (mode === "camera") startCamera();
   };
 
   const downloadResults = () => {
     // Create a downloadable report with the image and detections
-    const canvas = document.createElement('canvas');
+    const canvas = document.createElement("canvas");
     const img = new Image();
     img.src = image;
 
     img.onload = () => {
       canvas.width = img.width;
       canvas.height = img.height;
-      const ctx = canvas.getContext('2d');
+      const ctx = canvas.getContext("2d");
 
       // Draw the image
       ctx.drawImage(img, 0, 0);
 
       // Draw detection boxes
-      detections.forEach(det => {
+      detections.forEach((det) => {
         const [x1, y1, x2, y2] = det.bbox;
-        ctx.strokeStyle = '#FF4B4B';
+        ctx.strokeStyle = "#FF4B4B";
         ctx.lineWidth = 3;
         ctx.strokeRect(x1, y1, x2 - x1, y2 - y1);
 
         // Draw label
-        ctx.fillStyle = '#FF4B4B';
-        ctx.font = 'bold 16px Arial';
-        const text = `${det.class_name} (${(det.confidence * 100).toFixed(1)}%)`;
+        ctx.fillStyle = "#FF4B4B";
+        ctx.font = "bold 16px Arial";
+        const text = `${det.class_name} (${(det.confidence * 100).toFixed(
+          1
+        )}%)`;
         const textWidth = ctx.measureText(text).width;
         ctx.fillRect(x1, y1 - 20, textWidth + 10, 20);
-        ctx.fillStyle = 'white';
+        ctx.fillStyle = "white";
         ctx.fillText(text, x1 + 5, y1 - 5);
       });
 
       // Convert and download
-      const link = document.createElement('a');
-      link.download = 'plant-analysis-result.png';
-      link.href = canvas.toDataURL('image/png');
+      const link = document.createElement("a");
+      link.download = "plant-analysis-result.png";
+      link.href = canvas.toDataURL("image/png");
       link.click();
     };
   };
@@ -147,7 +195,12 @@ function App() {
         <div
           key={i}
           className="absolute border-2 border-red-600 bg-red-500/10 text-white text-xs font-semibold px-1"
-          style={{ left: x1, top: y1, width: x2 - x1, height: y2 - y1 }}
+          style={{
+            left: x1 - x1 / 2,
+            top: y1 - y1 / 2,
+            width: x2 - x1,
+            height: y2 - y1,
+          }}
         >
           <span className="bg-red-600 px-1 py-0.5 rounded">
             {det.class_name} ({(det.confidence * 100).toFixed(1)}%)
@@ -175,41 +228,83 @@ function App() {
         {/* Mode Switch */}
         <div className="flex bg-white rounded-full overflow-hidden shadow-md mb-8 mx-auto w-fit">
           <button
-            onClick={() => { setMode('camera'); reset(); }}
-            className={`px-6 py-3 font-medium flex items-center ${mode === 'camera' ? 'bg-emerald-600 text-white' : 'text-gray-700 hover:bg-gray-100'} transition-all`}
+            onClick={() => {
+              setMode("live");
+              reset();
+            }}
+            className={`px-6 py-3 font-medium flex items-center ${
+              mode === "live"
+                ? "bg-emerald-600 text-white"
+                : "text-gray-700 hover:bg-gray-100"
+            } transition-all`}
+          >
+            <Video className="w-5 h-5 mr-2" /> Live
+          </button>
+          <button
+            onClick={() => {
+              setMode("camera");
+              reset();
+            }}
+            className={`px-6 py-3 font-medium flex items-center ${
+              mode === "camera"
+                ? "bg-emerald-600 text-white"
+                : "text-gray-700 hover:bg-gray-100"
+            } transition-all`}
           >
             <Camera className="w-5 h-5 mr-2" /> Camera
           </button>
           <button
-            onClick={() => { setMode('upload'); reset(); }}
-            className={`px-6 py-3 font-medium flex items-center ${mode === 'upload' ? 'bg-emerald-600 text-white' : 'text-gray-700 hover:bg-gray-100'} transition-all`}
+            onClick={() => {
+              setMode("upload");
+              reset();
+            }}
+            className={`px-6 py-3 font-medium flex items-center ${
+              mode === "upload"
+                ? "bg-emerald-600 text-white"
+                : "text-gray-700 hover:bg-gray-100"
+            } transition-all`}
           >
             <Upload className="w-5 h-5 mr-2" /> Upload
           </button>
         </div>
 
-        <div className="flex flex-col lg:flex-row gap-8" >
+        <div className="flex flex-col lg:flex-row gap-8">
           {/* Image Area */}
           <div className="w-full lg:w-3/5 mx-auto">
             <div className="relative w-full aspect-[4/3] rounded-xl overflow-hidden shadow-lg bg-black">
               {!image ? (
-                mode === 'camera' ? (
-                  <video ref={videoRef} autoPlay playsInline muted className="w-full h-full object-cover" />
+                mode === "camera" || mode === "live" ? (
+                  <video
+                    ref={videoRef}
+                    autoPlay
+                    playsInline
+                    muted
+                    className="w-full h-full object-cover"
+                  />
                 ) : (
                   <UploadSection onUpload={handleUploadResult} />
                 )
               ) : (
-                <>
-                  <img src={image} alt="Captured" className="w-full h-full object-contain" />
-                  {detections.length > 0 && <div ref={overlayRef} className="absolute inset-0 z-10 translate-x-[30%] translate-y-[15%]">{renderBoxes()}</div>}
-                </>
+                <img
+                  src={image}
+                  alt="Captured"
+                  className="w-full h-full object-contain"
+                />
               )}
-              <canvas ref={canvasRef} style={{ display: 'none' }} />
+
+              {/* ✅ Render overlay unconditionally if detections are available */}
+              {(mode === "live" || image) && detections.length > 0 && (
+                <div ref={overlayRef} className="absolute inset-0 z-20">
+                  {renderBoxes()}
+                </div>
+              )}
+
+              <canvas ref={canvasRef} style={{ display: "none" }} />
             </div>
 
             {/* Action Buttons */}
             <div className="flex flex-wrap justify-center mt-6 gap-4">
-              {!image && mode === 'camera' && (
+              {!image && mode === "camera" && (
                 <button
                   onClick={takePhoto}
                   className="px-6 py-3 rounded-full bg-emerald-600 text-white hover:bg-emerald-700 transition-all shadow-md flex items-center"
@@ -223,7 +318,11 @@ function App() {
                   <button
                     onClick={analyzeImage}
                     disabled={analyzing}
-                    className={`px-6 py-3 rounded-full ${analyzing ? 'bg-gray-400' : 'bg-blue-600 hover:bg-blue-700'} text-white transition-all shadow-md flex items-center`}
+                    className={`px-6 py-3 rounded-full ${
+                      analyzing
+                        ? "bg-gray-400"
+                        : "bg-blue-600 hover:bg-blue-700"
+                    } text-white transition-all shadow-md flex items-center`}
                   >
                     {analyzing ? (
                       <>
