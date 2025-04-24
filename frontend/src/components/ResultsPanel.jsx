@@ -8,18 +8,8 @@ import {
   Download,
 } from "lucide-react";
 import ReactMarkdown from "react-markdown";
-import OpenAI from "openai";
 import "./markdown.css";
-
-const openai = new OpenAI({
-  baseURL: "https://openrouter.ai/api/v1",
-  apiKey: import.meta.env.VITE_OPENROUTER_KEY,
-  defaultHeaders: {
-    "HTTP-Referer": window.location.origin,
-    "X-Title": "PlantGuard Disease Detection",
-  },
-  dangerouslyAllowBrowser: true,
-});
+import OpenAI from "openai";
 
 const ResultsPanel = ({ classificationResult }) => {
   const [aiResponse, setAiResponse] = useState("");
@@ -27,7 +17,6 @@ const ResultsPanel = ({ classificationResult }) => {
   const [error, setError] = useState(null);
   const [copiedTip, setCopiedTip] = useState(false);
 
-  // Handle no detections case
   if (!classificationResult || !classificationResult.predicted_class) {
     return (
       <div className="bg-white rounded-xl shadow-lg p-6 h-full">
@@ -45,56 +34,60 @@ const ResultsPanel = ({ classificationResult }) => {
     );
   }
 
-  // Get the condition name from the API response
   const conditionName = classificationResult.predicted_class;
   const confidence = classificationResult.confidence;
 
-  // Fetch AI data when detection changes
   useEffect(() => {
     const fetchAIAnalysis = async () => {
       setLoading(true);
       setError(null);
 
-      try {
-        const detectionPrompt = `
-          You are an expert in plant pathology and gardening. In this plant image, we've detected "${conditionName}" with ${(
-          confidence * 100
-        ).toFixed(1)}% confidence.
-          
-          Please create a complete analysis report in markdown format with the following sections:
-          
-          # ${conditionName}
-          
-          ## Description
-          [Provide a 2-3 sentence description of this plant condition]
-          
-          ## Severity
-          [Indicate severity as: none, low, medium, high, or very high. Explain why briefly.]
-          
-          ## Recommended Treatments
-          [List 3-4 specific treatment recommendations as bullet points]
-          
-          ## Prevention
-          [Provide 2-3 sentences on how to prevent this condition]
-          
-          If this is a healthy plant, adjust your response accordingly. Keep all information practical and focused on plant care.
-        `;
+      const prompt = `
+You are an expert in plant pathology and gardening. In this plant image, we've detected "${conditionName}" with ${(
+        confidence * 100
+      ).toFixed(1)}% confidence.
 
-        const completion = await openai.chat.completions.create({
-          model: "anthropic/claude-3-haiku:free",
-          messages: [
-            {
-              role: "user",
-              content: detectionPrompt,
-            },
-          ],
+Please create a complete analysis report in markdown format with the following sections:
+
+# ${conditionName}
+
+## Description
+[Provide a 2-3 sentence description of this plant condition]
+
+## Severity
+[Indicate severity as: none, low, medium, high, or very high. Explain why briefly.]
+
+## Recommended Treatments
+[List 3-4 specific treatment recommendations as bullet points]
+
+## Prevention
+[Provide 2-3 sentences on how to prevent this condition]
+
+If this is a healthy plant, adjust your response accordingly. Keep all information practical and focused on plant care.
+`;
+
+      try {
+        const openai = new OpenAI({
+          baseURL: "https://openrouter.ai/api/v1",
+          apiKey: import.meta.env.VITE_OPENROUTER_KEY,
+          defaultHeaders: {
+            "HTTP-Referer": window.location.origin,
+            "X-Title": "PlantGuard Disease Detection",
+          },
+          dangerouslyAllowBrowser: true,
         });
 
-        const responseText = completion.choices[0].message.content;
-        setAiResponse(responseText);
+        const completion = await openai.chat.completions.create({
+          model: "meta-llama/llama-4-scout:free",
+          messages: [{ role: "user", content: prompt }],
+        });
+
+        setAiResponse(
+          completion.choices[0]?.message?.content || "No response generated."
+        );
         setLoading(false);
-      } catch (error) {
-        console.error("AI analysis error:", error);
+      } catch (err) {
+        console.error("AI analysis error:", err);
         setError("Failed to connect to analysis service");
         setLoading(false);
       }
@@ -111,7 +104,6 @@ const ResultsPanel = ({ classificationResult }) => {
     setTimeout(() => setCopiedTip(false), 2000);
   };
 
-  // Loading state
   if (loading) {
     return (
       <div className="bg-white rounded-xl shadow-lg p-6 h-full">
@@ -128,7 +120,6 @@ const ResultsPanel = ({ classificationResult }) => {
     );
   }
 
-  // Error state
   if (error) {
     return (
       <div className="bg-white rounded-xl shadow-lg p-6 h-full">
@@ -148,7 +139,6 @@ const ResultsPanel = ({ classificationResult }) => {
 
   return (
     <div className="bg-white rounded-xl shadow-lg overflow-hidden h-full">
-      {/* Header */}
       <div className="bg-emerald-700 p-6 text-white">
         <div className="flex justify-between items-center">
           <h2 className="text-2xl font-bold">Analysis Results</h2>
@@ -158,7 +148,6 @@ const ResultsPanel = ({ classificationResult }) => {
         </div>
       </div>
 
-      {/* Markdown Content */}
       <div className="p-6 overflow-y-auto max-h-[60vh]">
         <div className="prose prose-emerald max-w-none markdown-body">
           <ReactMarkdown>
@@ -167,7 +156,6 @@ const ResultsPanel = ({ classificationResult }) => {
         </div>
       </div>
 
-      {/* Action buttons */}
       <div className="border-t border-gray-200 p-4 flex flex-wrap gap-3">
         <button
           onClick={copyToClipboard}
